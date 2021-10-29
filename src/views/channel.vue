@@ -1,11 +1,15 @@
 <template>
-  <div>
+  <div class="channel-container">
     <el-tree
+      :load="loadNode"
+      lazy
       :data="data"
       :props="defaultProps"
+      :accordion="true"
       @node-click="handleNodeClick"
+      style="min-height: 500px"
     ></el-tree>
-    <div>
+    <!-- <div>
       <el-form :inline="true" :model="hkvInfo" class="demo-form-inline">
         <el-row>
           <el-col>
@@ -55,7 +59,7 @@
           </el-col>
         </el-row>
       </el-form>
-    </div>
+    </div> -->
     <div>
       <label>数字通道列表: </label>
       <el-tag
@@ -88,11 +92,12 @@ export default {
   data() {
     return {
       hkvInfo: {
-        ip: "192.168.2.60", //海康威视摄像头/硬盘录像机的ip地址
+        ip: "192.168.0.60", //海康威视摄像头/硬盘录像机的ip地址
         port: "80", //海康威视摄像头/硬盘录像机的端口
         username: "admin", //海康威视摄像头/硬盘录像机的用户名
         password: "pass@1234", //海康威视摄像头/硬盘录像机的密码
         channels: [2], //海康威视摄像头/硬盘录像机的通道
+        channelsName: [], //海康威视摄像头/硬盘录像机的通道
       },
       mySelectWnd: 0, //当前选中的窗口
       g_bPTZAuto: false,
@@ -121,42 +126,43 @@ export default {
           label: "4*4",
         },
       ],
-
+      // 树形数据
       data: [
         {
-          label: "一级 1",
-          children: [
-            {
-              label: "二级 1-1",
-            },
-          ],
+          label: "192.168.0.60",
+          meta:{
+            ip: "192.168.0.60",
+            port: '80',
+            username: 'admin',
+            password: 'pass@1234',
+            level: 0
+          },
         },
         {
-          label: "一级 2",
-          children: [
-            {
-              label: "二级 2-1",
-            },
-            {
-              label: "二级 2-2",
-            },
-          ],
+          label: "192.168.2.61",
+          meta:{
+            ip: "192.168.2.61",
+            port: '80',
+            username: 'admin',
+            password: 'pass@1234',
+            level: 0
+          },
         },
         {
-          label: "一级 3",
-          children: [
-            {
-              label: "二级 3-1",
-            },
-            {
-              label: "二级 3-2",
-            },
-          ],
+          label: "192.168.2.62",
+          meta:{
+            ip: "192.168.2.62",
+            port: '80',
+            username: 'admin',
+            password: 'pass@1234',
+            level: 0
+          },
         },
       ],
       defaultProps: {
         children: "children",
         label: "label",
+        isLeaf: 'leaf'
       },
     };
   },
@@ -172,8 +178,44 @@ export default {
     this.onLogout();
   },
   methods: {
-    handleNodeClick(data) {
-      console.log(data);
+    handleNodeClick(data, node, tree) {
+      console.log(data, node, tree);
+      if (data.meta.level === 0) {
+        this.hkvInfo = data.meta
+        this.onLogin()
+      } else {
+        // 点击通道 开始预览
+        let parent = node.parent.data
+        this.hkvInfo = parent.meta
+        console.log(data);
+        this.hkvInfo.channels = [data.meta.id]
+        this.clickStartRealPlay()
+      }
+    },
+    async loadNode(node, resolve) {
+      if (node.level === 0) {
+        return resolve(this.data);
+      }
+      if (node.level > 1) return resolve([]);
+      console.log('>>>>', this.hkvInfo.channels);
+      setTimeout(() => {
+        console.log('<<<<', this.hkvInfo.channels);
+        if (this.hkvInfo.channels) {
+          const data = this.hkvInfo.channels.map((item, index) => {
+            return {
+              label: this.hkvInfo.channelsName[index], 
+              meta: {
+                id: item,
+                level: 1,
+              },
+              leaf: true
+            }
+          })
+          resolve(data);
+        } else {
+          return resolve([]);
+        }
+      }, 500);
     },
     onLogin() {
       var that = this;
@@ -194,20 +236,11 @@ export default {
             that.loginLoading = false;
             that.getChannelInfo();
             that.getDevicePort(that.hkvInfo.ip + "_" + that.hkvInfo.port);
-
-            that.$message({
-              showClose: true,
-              message: "登录成功",
-              type: "success",
-            });
+            console.log('>>> 登录成功 <<<')
           },
           error: function () {
             that.loginLoading = false;
-            that.$message({
-              showClose: true,
-              message: "登录失败",
-              type: "error",
-            });
+            console.log('>>> 登录失败 <<<')
           },
         }
       );
@@ -237,7 +270,7 @@ export default {
       var szDeviceIdentify = that.hkvInfo.ip + "_" + that.hkvInfo.port;
       console.log("开始预览。。。。");
       var j =
-        that.hkvInfo.channels.length > 4 ? 4 : that.hkvInfo.channels.length;
+        that.hkvInfo.channels.length > this.wndNum ? this.wndNum : that.hkvInfo.channels.length;
       console.log(that.hkvInfo, that.hkvInfo.channels, j);
       for (var i = 0; i < j; i++) {
         console.log(i);
@@ -344,12 +377,13 @@ export default {
       });
     },
     // 获取通道，实际上可以根据自己的项目，获取数字通道，模拟通道，零通道中的一个或多个，不用全部获取（提高效率）
-    getChannelInfo: function () {
+    getChannelInfo() {
       var that = this;
       var szDeviceIdentify = this.hkvInfo.ip + "_" + this.hkvInfo.port;
       // debugger
       // 数字通道
-      that.hkvInfo.channels = [];
+      this.hkvInfo.channels = [];
+      this.hkvInfo.channelsName = [];
       WebVideoCtrl.I_GetDigitalChannelInfo(szDeviceIdentify, {
         async: false,
         success: function (xmlStr) {
@@ -366,12 +400,14 @@ export default {
             if (Array.isArray(list)) {
               for (var x = 0; x < list.length; x++) {
                 that.hkvInfo.channels.push(list[x].id);
+                that.hkvInfo.channelsName.push(list[x].sourceInputPortDescriptor.name);
               }
             } else {
               that.hkvInfo.channels.push(list.id);
+              that.hkvInfo.channelsName.push(list.sourceInputPortDescriptor.name);
             }
           }
-          console.log(that.hkvInfo.channels);
+          console.log(that.hkvInfo.channelsName);
         },
         error: function (status, xmlDoc) {
           console.log("获取数字通道失败");
@@ -389,13 +425,11 @@ export default {
           var list = jsonObj.VideoInputChannelList;
           for (var x = 0; x < list.length; x++) {
             that.hkvInfo.channels.push(list[x].VideoInputChannel.id);
+            that.hkvInfo.channelsName.push(list[x].VideoInputChannel.name);
           }
           // var id = jsonObj.VideoInputChannelList.VideoInputChannel.id;
-          that.hkvInfo.channels.push(id);
+          // that.hkvInfo.channels.push(id);
         },
-        // success: function (xmlStr) {
-        //   console.log("模拟通道success",xmlStr);
-        // },
         error: function (status, xmlDoc) {
           // that.hkvInfo.channels.push(2);
           console.log("模拟通道error", xmlDoc);
@@ -412,12 +446,14 @@ export default {
           var list = jsonObj.ZeroVideoChannelList;
           for (var x = 0; x < list.length; x++) {
             that.hkvInfo.channels.push(list[x].id);
+            that.hkvInfo.channelsName.push(list[x].id);
           }
         },
         error: function (status, xmlDoc) {
           console.log("零通道error", xmlDoc);
         },
       });
+      console.log(this.hkvInfo.channelsName);
     },
     mouseDownPTZControl: function (iPTZIndex) {
       console.log(iPTZIndex);
@@ -515,4 +551,11 @@ export default {
 </script>
 
 <style scoped>
+.channel-container {
+  color: aliceblue;
+}
+.el-tree {
+  color: #409eff;
+  background: transparent;
+}
 </style>
